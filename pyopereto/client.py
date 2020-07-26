@@ -96,11 +96,11 @@ class OperetoClient(object):
             token_file = os.path.join(home_dir,'.opereto.token')
             if os.path.exists(token_file):
                 with open(token_file, 'r') as tf:
-                    kwargs.update({'opereto_token':tf.read()})
+                    self.input.update({'opereto_token':tf.read().strip()})
             host_file = os.path.join(home_dir, '.opereto.host')
             if os.path.exists(host_file):
                 with open(host_file, 'r') as hf:
-                    kwargs.update({'opereto_host': hf.read()})
+                    self.input.update({'opereto_host': hf.read().strip()})
 
         def get_credentials(file):
             try:
@@ -164,22 +164,19 @@ class OperetoClient(object):
 
     @property
     def get_current_username(self):
-        try:
-            user={}
-            if self.auth_method=='basic':
-                user = {
-                    'username': self.input['opereto_user']
-                }
-            else:
-                unverified_decoded_token = jwt.decode(self.input['opereto_token'], verify=False)
-                expiration_date = datetime.fromtimestamp(unverified_decoded_token['exp']).isoformat()
-                user = {
-                    'username': unverified_decoded_token['username'],
-                    'email': unverified_decoded_token['email'],
-                    'expiry_date': expiration_date
-                }
-        finally:
-            return user
+        if self.auth_method=='basic':
+            user = {
+                'username': self.input['opereto_user']
+            }
+        else:
+            unverified_decoded_token = jwt.decode(self.input['opereto_token'], verify=False)
+            expiration_date = datetime.fromtimestamp(unverified_decoded_token['exp']).isoformat()
+            user = {
+                'username': unverified_decoded_token['username'],
+                'email': unverified_decoded_token['email'],
+                'expiry_date': expiration_date
+            }
+        return user
 
 
     def _connect(self):
