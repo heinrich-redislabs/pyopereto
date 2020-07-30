@@ -91,12 +91,13 @@ class OperetoClient(object):
         home_dir = os.path.expanduser("~")
         self.last_log_ts = int(int((datetime.utcnow() - datetime(1970, 1, 1)).total_seconds())) * 1000
         self.auth_method = None
+        self.token = None
 
         def _get_agent_credentials():
             token_file = os.path.join(home_dir,'.opereto.token')
             if os.path.exists(token_file):
                 with open(token_file, 'r') as tf:
-                    self.input.update({'opereto_token':tf.read().strip()})
+                    self.token = tf.read().strip()
             host_file = os.path.join(home_dir, '.opereto.host')
             if os.path.exists(host_file):
                 with open(host_file, 'r') as hf:
@@ -109,6 +110,10 @@ class OperetoClient(object):
                         self.input.update(json.loads(f.read()))
                     else:
                         self.input.update(yaml.load(f.read(), Loader=yaml.FullLoader))
+                if 'opereto_token' in self.input:
+                    self.token = self.input['opereto_token']
+                    del self.input['opereto_token']
+
             except Exception as e:
                 raise OperetoClientError('Failed to parse %s: %s'%(file, str(e)))
 
@@ -116,7 +121,7 @@ class OperetoClient(object):
         def _verify_credentials():
             if set(['opereto_host', 'opereto_password', 'opereto_user', ]) <= set(self.input):
                 return 'basic'
-            elif set(['opereto_token', 'opereto_host']) <= set(self.input):
+            elif set(['opereto_host']) <= set(self.input) and self.token is not None:
                 return 'token'
             return None
 
@@ -158,7 +163,7 @@ class OperetoClient(object):
             self.session = None
         else:
             self.headers = {
-                "Authorization": "Bearer {}".format(self.input['opereto_token']),
+                "Authorization": "Bearer {}".format(self.token),
                 'content-type': 'application/json'
             }
 
@@ -169,7 +174,7 @@ class OperetoClient(object):
                 'username': self.input['opereto_user']
             }
         else:
-            unverified_decoded_token = jwt.decode(self.input['opereto_token'], verify=False)
+            unverified_decoded_token = jwt.decode(self.token, verify=False)
             expiration_date = datetime.fromtimestamp(unverified_decoded_token['exp']).isoformat()
             user = {
                 'username': unverified_decoded_token['username'],
