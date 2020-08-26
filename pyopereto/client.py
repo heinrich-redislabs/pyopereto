@@ -87,18 +87,18 @@ class OperetoClient(object):
 
     def __init__(self, **kwargs):
         self.input=kwargs
-        work_dir = os.getcwd()
-        home_dir = os.path.expanduser("~")
+        self.work_dir = os.getcwd()
+        self.home_dir = os.path.expanduser("~")
         self.last_log_ts = int(int((datetime.utcnow() - datetime(1970, 1, 1)).total_seconds())) * 1000
         self.auth_method = None
         self.token = None
 
         def _get_agent_credentials():
-            token_file = os.path.join(home_dir,'.opereto.token')
+            token_file = os.path.join(self.home_dir,'.opereto.token')
             if os.path.exists(token_file):
                 with open(token_file, 'r') as tf:
                     self.token = tf.read().strip()
-            host_file = os.path.join(home_dir, '.opereto.host')
+            host_file = os.path.join(self.home_dir, '.opereto.host')
             if os.path.exists(host_file):
                 with open(host_file, 'r') as hf:
                     self.input.update({'opereto_host': hf.read().strip()})
@@ -110,30 +110,30 @@ class OperetoClient(object):
                         self.input.update(json.loads(f.read()))
                     else:
                         self.input.update(yaml.load(f.read(), Loader=yaml.FullLoader))
-                if 'opereto_token' in self.input:
-                    self.token = self.input['opereto_token']
-                    del self.input['opereto_token']
+
 
             except Exception as e:
                 raise OperetoClientError('Failed to parse %s: %s'%(file, str(e)))
 
-
         def _verify_credentials():
+            if 'opereto_token' in self.input:
+                self.token = self.input['opereto_token']
+                del self.input['opereto_token']
+
             if set(['opereto_host', 'opereto_password', 'opereto_user', ]) <= set(self.input):
                 return 'basic'
             elif set(['opereto_host']) <= set(self.input) and self.token is not None:
                 return 'token'
             return None
 
-
         if not _verify_credentials():
             _get_agent_credentials()
-            if os.path.exists(os.path.join(work_dir,'arguments.json')):
-                get_credentials(os.path.join(work_dir,'arguments.json'))
-            elif os.path.exists(os.path.join(work_dir,'arguments.yaml')):
-                get_credentials(os.path.join(work_dir,'arguments.yaml'))
-            elif os.path.exists(os.path.join(home_dir,'opereto.yaml')):
-                get_credentials(os.path.join(home_dir,'opereto.yaml'))
+            if os.path.exists(os.path.join(self.work_dir,'arguments.json')):
+                get_credentials(os.path.join(self.work_dir,'arguments.json'))
+            elif os.path.exists(os.path.join(self.work_dir,'arguments.yaml')):
+                get_credentials(os.path.join(self.work_dir,'arguments.yaml'))
+            elif os.path.exists(os.path.join(self.home_dir,'opereto.yaml')):
+                get_credentials(os.path.join(self.home_dir,'opereto.yaml'))
 
         ## TEMP: fix in agent
         for item in list(self.input.keys()):
@@ -168,10 +168,34 @@ class OperetoClient(object):
             }
 
     @property
+    def is_local_mode(self):
+        return self.input.get('opereto_local_mode') or False
+
+    def _modify_local_argument(self, key, value):
+        self.input[key] = value
+        with open(os.path.join(self.work_dir, 'arguments.json'), 'w') as json_arguments_outfile:
+            json.dump(self.input, json_arguments_outfile, indent=4, sort_keys=True)
+        with open(os.path.join(self.work_dir, 'arguments.yaml'), 'w') as yaml_arguments_outfile:
+            yaml.dump(yaml.load(json.dumps(self.input), Loader=yaml.FullLoader), yaml_arguments_outfile,
+                      indent=4, default_flow_style=False)
+
+    def _get_local_argument(self, key):
+        _arguments = {}
+        if os.path.exists(os.path.join(self.work_dir, 'arguments.json')):
+            with open(os.path.join(self.work_dir, 'arguments.json'), 'r') as f:
+                _arguments = json.loads(f.read())
+        elif os.path.exists(os.path.join(self.work_dir, 'arguments.yaml')):
+            with open(os.path.join(self.work_dir, 'arguments.yaml'), 'r') as f:
+                _arguments = yaml.load(f.read(), Loader=yaml.FullLoader)
+        return _arguments[key]
+
+
+    @property
     def get_current_username(self):
         if self.auth_method=='basic':
             user = {
-                'username': self.input['opereto_user']
+                'username': self.input['opereto_user'],
+                'email': self.input.get('opereto_originator_email')
             }
         else:
             unverified_decoded_token = jwt.decode(self.token, verify=False)
@@ -1173,6 +1197,11 @@ class OperetoClient(object):
 
         """
         pid = self._get_pid(pid)
+        if self.is_local_mode:
+            for k, v in key_value_map.items():
+                self._modify_local_argument(k, v)
+                res = {'status': 'success'}
+            return res
         request_data={"properties": key_value_map}
         return self._call_rest_api('post', '/processes/'+pid+'/output', data=request_data, error='Failed to output properties')
 
@@ -1197,6 +1226,10 @@ class OperetoClient(object):
 
         """
         pid = self._get_pid(pid)
+        if self.is_local_mode:
+            self._modify_local_argument(key, value)
+            res = {'status': 'success'}
+            return res
         request_data={"key" : key, "value": value}
         return self._call_rest_api('post', '/processes/'+pid+'/output', data=request_data, error='Failed to modify output property [%s]'%key)
 
@@ -1402,6 +1435,13 @@ class OperetoClient(object):
 
         """
         pid = self._get_pid(pid)
+        if self.is_local_mode:
+            props = self.input
+            if name:
+                return props[name]
+            else:
+                return props
+
         url = '/processes/'+pid+'/properties'
         if verbose:
             url+='?verbose=true'

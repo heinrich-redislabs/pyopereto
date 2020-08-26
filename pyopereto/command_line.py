@@ -140,7 +140,8 @@ work_dir = os.getcwd()
 RUNNING_PROCESS = None
 
 pyopereto_latest_version_file = os.path.join(HOME_DIR,'.pyopereto.latest')
-opereto_config_file = os.path.join(HOME_DIR,'opereto.yaml')
+
+opereto_config_file = os.environ.get('OPERETO_CREDENTIALS_FILE', os.path.join(HOME_DIR,'opereto.yaml'))
 if not os.path.exists(opereto_config_file):
     opereto_config_file = 'arguments.yaml'
 if not os.path.exists(opereto_config_file):
@@ -151,16 +152,15 @@ with open(opereto_config_file, 'r') as f:
     opereto_credentials_json = yaml.load(f.read(), Loader=yaml.FullLoader)
 
 OPERETO_HOST = opereto_credentials_json['opereto_host']
-
+print('Opereto cluster: {}'.format(OPERETO_HOST))
 def get_opereto_client():
     if opereto_credentials_json.get('opereto_password'):
-        client = OperetoClient(opereto_host=opereto_credentials_json['opereto_host'],
+        client = OperetoClient(opereto_host=OPERETO_HOST,
                                opereto_user=opereto_credentials_json['opereto_user'],
                                opereto_password=opereto_credentials_json['opereto_password'])
         return client
     else:
-        OPERETO_TOKEN = opereto_credentials_json['opereto_token']
-        client = OperetoClient(opereto_host=OPERETO_HOST, opereto_token=OPERETO_TOKEN)
+        client = OperetoClient(opereto_host=OPERETO_HOST, opereto_token=opereto_credentials_json['opereto_token'])
         return client
 
 
@@ -409,7 +409,7 @@ def local_dev(params):
                               opereto_originator_email=_user['email'],
                               opereto_execution_mode="development")
         builtin_params['opereto_timeout']=spec['timeout']
-
+        builtin_params['opereto_local_mode'] = True
         # prepare arguments json
         arguments_json = builtin_params
         with open(opereto_config_file, 'r') as arguments_file:
