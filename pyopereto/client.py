@@ -141,7 +141,8 @@ class OperetoClient(object):
             elif os.path.exists(os.path.join(self.home_dir,'opereto.yaml')):
                 get_credentials(os.path.join(self.home_dir,'opereto.yaml'))
             else:
-                self.input.update(os.environ)
+                for x, y in os.environ.items():
+                    self.input[x] = y
 
         ## TEMP: fix in agent
         for item in list(self.input.keys()):
