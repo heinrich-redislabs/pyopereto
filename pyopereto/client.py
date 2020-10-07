@@ -6,6 +6,7 @@ import json
 import yaml
 import jwt
 import time
+import tempfile
 from functools import wraps as _wraps
 
 try:
@@ -51,7 +52,6 @@ class OperetoClientError(Exception):
     def __str__(self):
         return self.message
 
-
 def apicall(f):
 
     @_wraps (f)
@@ -87,21 +87,27 @@ class OperetoClient(object):
 
     def __init__(self, **kwargs):
         self.input=kwargs
-        self.work_dir = os.getcwd()
         self.home_dir = os.path.expanduser("~")
+        try:
+            self.work_dir = os.getcwd()
+        except FileNotFoundError:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                self.work_dir=tmpdirname
+
         self.last_log_ts = int(int((datetime.utcnow() - datetime(1970, 1, 1)).total_seconds())) * 1000
         self.auth_method = None
         self.token = None
 
         def _get_agent_credentials():
-            token_file = os.path.join(self.home_dir,'.opereto.token')
+            token_file = os.path.join(self.home_dir, '.opereto.token')
             if os.path.exists(token_file):
                 with open(token_file, 'r') as tf:
                     self.token = tf.read().strip()
-            host_file = os.path.join(self.home_dir, '.opereto.host')
-            if os.path.exists(host_file):
-                with open(host_file, 'r') as hf:
-                    self.input.update({'opereto_host': hf.read().strip()})
+
+                host_file = os.path.join(self.home_dir, '.opereto.host')
+                if os.path.exists(host_file):
+                    with open(host_file, 'r') as hf:
+                        self.input.update({'opereto_host': hf.read().strip()})
 
         def get_credentials(file):
             try:
@@ -134,6 +140,8 @@ class OperetoClient(object):
                 get_credentials(os.path.join(self.work_dir,'arguments.yaml'))
             elif os.path.exists(os.path.join(self.home_dir,'opereto.yaml')):
                 get_credentials(os.path.join(self.home_dir,'opereto.yaml'))
+            else:
+                self.input.update(os.environ)
 
         ## TEMP: fix in agent
         for item in list(self.input.keys()):
@@ -154,10 +162,7 @@ class OperetoClient(object):
         else:
             raise OperetoClientError(
                 'Missing one or more basic auth credentials required to connect to opereto center.')
-
         self.input['opereto_user'] = self.get_current_username['username']
-
-
 
         if self.auth_method=='basic':
             self.session = None
@@ -2092,3 +2097,7 @@ class OperetoClient(object):
         sys.stdout.write('\r100% Uploaded out of {} Bytes\n'.format(file_size))
         sys.stdout.flush()
         return self._process_response(r)
+
+
+
+
